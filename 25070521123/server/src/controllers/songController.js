@@ -1,4 +1,5 @@
 const Song = require('../models/Song');
+const { removeUploadedFile } = require('../middleware/upload');
 
 const SORT_OPTIONS = {
   newest: { createdAt: -1 },
@@ -23,6 +24,20 @@ function pickSongFields(body = {}) {
   if (data.favorite !== undefined) data.favorite = data.favorite === true || data.favorite === 'true';
 
   return data;
+}
+
+/**
+ * Turn an uploaded file (from multer) into the fields stored on the song.
+ * The public URL is relative so it works whatever host the API runs on.
+ */
+function audioFieldsFromFile(file) {
+  if (!file) return null;
+
+  return {
+    audioUrl: `/uploads/${file.filename}`,
+    audioName: file.originalname,
+    audioSize: file.size,
+  };
 }
 
 function escapeRegex(value) {
@@ -73,6 +88,7 @@ exports.getStats = async (req, res, next) => {
       total: songs.length,
       artists: new Set(songs.map((song) => song.artist.toLowerCase().trim())).size,
       favorites: songs.filter((song) => song.favorite).length,
+      withAudio: songs.filter((song) => Boolean(song.audioUrl)).length,
       avgRating: songs.length ? Math.round((ratingSum / songs.length) * 10) / 10 : 0,
       totalDuration,
       genres: Object.entries(genreCount)
@@ -95,34 +111,56 @@ exports.getSong = async (req, res, next) => {
   }
 };
 
-/** POST /api/songs */
+/** POST /api/songs (JSON or multipart/form-data with an "audio" file) */
 exports.createSong = async (req, res, next) => {
   try {
     const data = pickSongFields(req.body);
 
     if (!data.title || !data.artist) {
+      // Do not leave an orphaned file behind when validation fails.
+      if (req.file) removeUploadedFile(`/uploads/${req.file.filename}`);
       return res.status(400).json({ message: 'Title and artist are required' });
     }
 
-    const song = await Song.create({ ...data, user: req.userId });
+    const audio = audioFieldsFromFile(req.file);
+    const song = await Song.create({ ...data, ...(audio || {}), user: req.userId });
+
     return res.status(201).json({ song });
   } catch (error) {
+    if (req.file) removeUploadedFile(`/uploads/${req.file.filename}`);
     return next(error);
   }
 };
 
-/** PUT /api/songs/:id */
+/** PUT /api/songs/:id - also accepts a new audio file or removeAudio=true */
 exports.updateSong = async (req, res, next) => {
   try {
     const song = await Song.findOne({ _id: req.params.id, user: req.userId });
-    if (!song) return res.status(404).json({ message: 'Song not found' });
+    if (!song) {
+      if (req.file) removeUploadedFile(`/uploads/${req.file.filename}`);
+      return res.status(404).json({ message: 'Song not found' });
+    }
 
     const data = pickSongFields(req.body);
     Object.assign(song, data);
-    await song.save();
 
+    const audio = audioFieldsFromFile(req.file);
+    const wantsRemoval = req.body?.removeAudio === 'true' || req.body?.removeAudio === true;
+
+    if (audio) {
+      removeUploadedFile(song.audioUrl);
+      Object.assign(song, audio);
+    } else if (wantsRemoval && song.audioUrl) {
+      removeUploadedFile(song.audioUrl);
+      song.audioUrl = '';
+      song.audioName = '';
+      song.audioSize = 0;
+    }
+
+    await song.save();
     return res.json({ song });
   } catch (error) {
+    if (req.file) removeUploadedFile(`/uploads/${req.file.filename}`);
     return next(error);
   }
 };
@@ -132,6 +170,10 @@ exports.deleteSong = async (req, res, next) => {
   try {
     const song = await Song.findOneAndDelete({ _id: req.params.id, user: req.userId });
     if (!song) return res.status(404).json({ message: 'Song not found' });
+
+    // Remove the audio file too so uploads/ does not grow forever.
+    removeUploadedFile(song.audioUrl);
+
     return res.json({ message: 'Song deleted', id: song.id });
   } catch (error) {
     return next(error);

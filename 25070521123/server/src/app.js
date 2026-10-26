@@ -4,6 +4,7 @@ const cors = require('cors');
 const authRoutes = require('./routes/authRoutes');
 const songRoutes = require('./routes/songRoutes');
 const { notFound, errorHandler } = require('./middleware/error');
+const { UPLOAD_DIR } = require('./middleware/upload');
 
 const app = express();
 
@@ -20,6 +21,18 @@ app.use(
 );
 
 app.use(express.json({ limit: '1mb' }));
+
+// Uploaded audio. express.static answers HTTP Range requests, which is what
+// allows the browser player to seek inside a track.
+app.use(
+  '/uploads',
+  express.static(UPLOAD_DIR, {
+    acceptRanges: true,
+    maxAge: '1h',
+    fallthrough: false,
+    dotfiles: 'ignore',
+  })
+);
 
 // Tiny request logger so the terminal shows API calls while demoing.
 app.use((req, _res, next) => {

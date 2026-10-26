@@ -28,6 +28,18 @@ function errorHandler(err, _req, res, _next) {
     message = `That ${field} is already in use`;
   }
 
+  // File upload problems reported by multer
+  if (err.name === 'MulterError') {
+    statusCode = 400;
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      message = 'Audio file is too large (maximum 25 MB)';
+    } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      message = 'Unexpected file field - upload the audio under "audio"';
+    } else {
+      message = err.message;
+    }
+  }
+
   if (statusCode >= 500) {
     console.error(err);
   }

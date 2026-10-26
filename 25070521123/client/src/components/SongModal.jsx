@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { getErrorMessage } from '../api/client';
+import { MAX_AUDIO_BYTES, formatBytes, getErrorMessage } from '../api/client';
 import { GENRES } from '../utils/constants';
-import { AlertIcon, StarIcon, XIcon } from './Icons';
+import { AlertIcon, StarIcon, UploadIcon, XIcon } from './Icons';
 
 const currentYear = new Date().getFullYear();
+const AUDIO_EXTENSIONS = /\.(mp3|wav|ogg|oga|m4a|aac|flac|webm)$/i;
 
 function buildForm(song) {
   if (!song) {
@@ -40,11 +41,18 @@ export default function SongModal({ open, song, onClose, onSave }) {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [audioFile, setAudioFile] = useState(null);
+  const [removeAudio, setRemoveAudio] = useState(false);
+  const [audioError, setAudioError] = useState('');
+
   useEffect(() => {
     if (!open) return;
     setForm(buildForm(song));
     setError('');
     setSaving(false);
+    setAudioFile(null);
+    setRemoveAudio(false);
+    setAudioError('');
   }, [open, song]);
 
   // Escape closes the dialog; lock background scrolling while it is open.
@@ -66,11 +74,68 @@ export default function SongModal({ open, song, onClose, onSave }) {
 
   if (!open) return null;
 
+  const existingAudio = Boolean(song?.audioUrl) && !removeAudio;
+
   function update(field) {
     return (event) => {
       const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
       setForm((current) => ({ ...current, [field]: value }));
     };
+  }
+
+  function handleFileChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const looksAudio = /^audio\//i.test(file.type) || AUDIO_EXTENSIONS.test(file.name);
+
+    if (!looksAudio) {
+      setAudioError('Choose an audio file (mp3, wav, ogg, m4a, aac, flac or webm).');
+      return;
+    }
+
+    if (file.size > MAX_AUDIO_BYTES) {
+      setAudioError(`That file is ${formatBytes(file.size)}. The limit is 25 MB.`);
+      return;
+    }
+
+    setAudioError('');
+    setAudioFile(file);
+    setRemoveAudio(false);
+
+    // Read the real length so the user does not have to type it.
+    const objectUrl = URL.createObjectURL(file);
+    const probe = new Audio();
+    probe.preload = 'metadata';
+
+    probe.onloadedmetadata = () => {
+      const total = Math.round(probe.duration);
+      if (Number.isFinite(total) && total > 1) {
+        setForm((current) => ({
+          ...current,
+          minutes: Math.floor(total / 60),
+          seconds: total % 60,
+        }));
+      }
+      URL.revokeObjectURL(objectUrl);
+    };
+
+    probe.onerror = () => URL.revokeObjectURL(objectUrl);
+    probe.src = objectUrl;
+
+    // A filename is often a good starting point for the title.
+    setForm((current) => {
+      if (current.title.trim()) return current;
+
+      const guess = file.name
+        .replace(AUDIO_EXTENSIONS, '')
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      return guess ? { ...current, title: guess.slice(0, 120) } : current;
+    });
   }
 
   async function handleSubmit(event) {
@@ -116,6 +181,8 @@ export default function SongModal({ open, song, onClose, onSave }) {
         duration,
         rating: Number(form.rating) || 3,
         favorite: form.favorite,
+        audioFile,
+        removeAudio,
       });
     } catch (saveError) {
       setError(getErrorMessage(saveError));
@@ -196,6 +263,73 @@ export default function SongModal({ open, song, onClose, onSave }) {
                 ))}
               </select>
             </label>
+          </div>
+
+          {/* ---------- audio attachment ---------- */}
+          <div className="field">
+            <span>Audio file</span>
+
+            <label className={`audio-drop ${audioFile || existingAudio ? 'has-file' : ''}`}>
+              <input
+                type="file"
+                className="audio-drop__input"
+                accept="audio/*,.mp3,.wav,.ogg,.oga,.m4a,.aac,.flac,.webm"
+                onChange={handleFileChange}
+              />
+
+              <span className="audio-drop__icon">
+                <UploadIcon size={18} />
+              </span>
+
+              <span className="audio-drop__copy">
+                <strong>
+                  {audioFile
+                    ? audioFile.name
+                    : existingAudio
+                      ? song?.audioName || 'Audio attached'
+                      : 'Choose an MP3 from your computer'}
+                </strong>
+                <small>
+                  {audioFile
+                    ? `${formatBytes(audioFile.size)} \u00b7 ready to upload`
+                    : removeAudio
+                      ? 'The attached file will be deleted when you save'
+                      : existingAudio
+                        ? `${formatBytes(song?.audioSize)} \u00b7 click to replace`
+                        : 'mp3, wav, ogg, m4a \u00b7 max 25 MB'}
+                </small>
+              </span>
+            </label>
+
+            {(existingAudio || audioFile) && (
+              <button
+                type="button"
+                className="btn btn--tiny btn--danger-ghost audio-drop__remove"
+                onClick={() => {
+                  setAudioFile(null);
+                  setRemoveAudio(Boolean(song?.audioUrl));
+                  setAudioError('');
+                }}
+              >
+                <XIcon size={13} /> {audioFile ? 'Discard selection' : 'Remove audio'}
+              </button>
+            )}
+
+            {removeAudio && song?.audioUrl && (
+              <button
+                type="button"
+                className="btn btn--tiny audio-drop__remove"
+                onClick={() => setRemoveAudio(false)}
+              >
+                Keep the current file instead
+              </button>
+            )}
+
+            {audioError && (
+              <p className="field__error" role="alert">
+                {audioError}
+              </p>
+            )}
           </div>
 
           <div className="grid-3">

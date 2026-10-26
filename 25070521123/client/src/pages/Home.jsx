@@ -15,6 +15,7 @@ import {
   HeadphonesIcon,
   HeartIcon,
   ListIcon,
+  PlayIcon,
   PlusIcon,
   SearchIcon,
   SlidersIcon,
@@ -23,11 +24,13 @@ import {
   XIcon,
 } from '../components/Icons';
 import Navbar from '../components/Navbar';
+import MiniPlayer from '../components/MiniPlayer';
 import SongCard from '../components/SongCard';
 import SongModal from '../components/SongModal';
 import SongRow from '../components/SongRow';
 import StatCard from '../components/StatCard';
 import { useAuth } from '../context/AuthContext';
+import { usePlayer } from '../context/PlayerContext';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import { GENRES, SORT_OPTIONS } from '../utils/constants';
@@ -40,6 +43,7 @@ export default function Home() {
   const { view, setView } = useTheme();
   const toast = useToast();
   const navigate = useNavigate();
+  const player = usePlayer();
 
   const [songs, setSongs] = useState([]);
   const [stats, setStats] = useState(null);
@@ -143,7 +147,8 @@ export default function Home() {
     setFilters((current) => ({ ...current, ...patch }));
   }
 
-  // Keyboard shortcuts: "/" focuses search, "n" adds a track.
+  // Keyboard shortcuts: "/" focuses search, "n" adds a track,
+  // Space toggles the player when nothing else has focus.
   useEffect(() => {
     function onKeyDown(event) {
       if (modal.open || deleteTarget) return;
@@ -153,7 +158,10 @@ export default function Home() {
         tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target.isContentEditable;
       if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
 
-      if (event.key === '/') {
+      if ((event.code === 'Space' || event.key === ' ') && tag !== 'BUTTON' && tag !== 'A') {
+        event.preventDefault();
+        player.toggle();
+      } else if (event.key === '/') {
         event.preventDefault();
         searchRef.current?.focus();
       } else if (event.key.toLowerCase() === 'n') {
@@ -164,19 +172,38 @@ export default function Home() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [modal.open, deleteTarget]);
+  }, [modal.open, deleteTarget, player.toggle]);
 
   async function handleSave(payload) {
+    // Audio is sent as multipart/form-data; plain edits stay JSON.
+    const { audioFile, removeAudio, ...fields } = payload;
+    const hasAudioChange = Boolean(audioFile) || Boolean(removeAudio);
+
+    let body = fields;
+    if (hasAudioChange) {
+      const form = new FormData();
+      Object.entries(fields).forEach(([key, value]) => form.append(key, String(value)));
+      if (removeAudio) form.append('removeAudio', 'true');
+      if (audioFile) form.append('audio', audioFile);
+      body = form;
+    }
+
     if (modal.song) {
-      const { data } = await api.put(`/songs/${modal.song.id}`, payload);
+      const { data } = await api.put(`/songs/${modal.song.id}`, body);
       setSongs((current) =>
         current.map((song) => (song.id === data.song.id ? data.song : song))
       );
-      toast.success('Track updated');
+
+      // The old file is gone, so stop the player rather than stream a 404.
+      if (player.current?.id === data.song.id && player.current.audioUrl !== data.song.audioUrl) {
+        player.close();
+      }
+
+      toast.success(audioFile ? 'Track updated with new audio' : 'Track updated');
     } else {
-      const { data } = await api.post('/songs', payload);
+      const { data } = await api.post('/songs', body);
       setSongs((current) => [data.song, ...current]);
-      toast.success('Track added to your library');
+      toast.success(data.song.audioUrl ? 'Track added - ready to play' : 'Track added to your library');
     }
 
     closeModal();
@@ -202,6 +229,7 @@ export default function Home() {
     setDeleting(true);
     try {
       await api.delete(`/songs/${deleteTarget.id}`);
+      if (player.current?.id === deleteTarget.id) player.close();
       setSongs((current) => current.filter((song) => song.id !== deleteTarget.id));
       toast.success(`"${deleteTarget.title}" was deleted`);
       setDeleteTarget(null);
@@ -214,19 +242,25 @@ export default function Home() {
   }
 
   function handleLogout() {
+    player.close();
     logout();
     toast.info('Signed out. See you soon!');
     navigate('/login', { replace: true });
+  }
+
+  function handlePlay(song) {
+    player.play(song, visibleSongs);
   }
 
   const sharedProps = {
     onEdit: openEdit,
     onDelete: setDeleteTarget,
     onToggleFavorite: handleToggleFavorite,
+    onPlay: handlePlay,
   };
 
   return (
-    <div className="app">
+    <div className={`app ${player.current ? 'app--with-player' : ''}`}>
       <div className="app__glow" aria-hidden="true" />
       <Navbar user={user} onLogout={handleLogout} />
 
@@ -254,6 +288,13 @@ export default function Home() {
                 <ClockIcon size={16} />
                 {stats ? formatTotalDuration(stats.totalDuration) : '...'} of music
               </span>
+
+              {stats?.withAudio > 0 && (
+                <span className="hero__pill hero__pill--live">
+                  <PlayIcon size={13} />
+                  {stats.withAudio} playable
+                </span>
+              )}
             </div>
           </div>
 
@@ -446,7 +487,13 @@ export default function Home() {
           ) : view === 'grid' ? (
             <div className={`song-grid ${loading ? 'is-updating' : ''}`}>
               {visibleSongs.map((song, index) => (
-                <SongCard key={song.id} song={song} index={index} {...sharedProps} />
+                <SongCard
+                  key={song.id}
+                  song={song}
+                  index={index}
+                  isPlaying={player.isPlaying(song)}
+                  {...sharedProps}
+                />
               ))}
             </div>
           ) : (
@@ -460,7 +507,13 @@ export default function Home() {
                 <span className="song-list__head-actions">Actions</span>
               </div>
               {visibleSongs.map((song, index) => (
-                <SongRow key={song.id} song={song} index={index} {...sharedProps} />
+                <SongRow
+                  key={song.id}
+                  song={song}
+                  index={index}
+                  isPlaying={player.isPlaying(song)}
+                  {...sharedProps}
+                />
               ))}
             </div>
           )}
@@ -485,6 +538,8 @@ export default function Home() {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
       />
+
+      <MiniPlayer />
     </div>
   );
 }

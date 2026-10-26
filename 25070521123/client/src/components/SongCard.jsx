@@ -1,10 +1,29 @@
-import { ClockIcon, HeartIcon, PencilIcon, StarIcon, TrashIcon, DiscIcon } from './Icons';
+import {
+  ClockIcon,
+  DiscIcon,
+  HeartIcon,
+  PauseIcon,
+  PencilIcon,
+  PlayIcon,
+  StarIcon,
+  TrashIcon,
+} from './Icons';
 import { coverGradient, formatDuration, initials, ratingStars } from '../utils/format';
 
-export default function SongCard({ song, index = 0, onEdit, onDelete, onToggleFavorite }) {
+export default function SongCard({
+  song,
+  index = 0,
+  onEdit,
+  onDelete,
+  onToggleFavorite,
+  onPlay,
+  isPlaying = false,
+}) {
+  const hasAudio = Boolean(song.audioUrl);
+
   return (
     <article
-      className="song-card"
+      className={`song-card ${isPlaying ? 'is-playing' : ''}`}
       style={{ '--delay': `${Math.min(index, 12) * 45}ms` }}
     >
       <div className="song-card__cover" style={{ background: coverGradient(`${song.title}${song.artist}`) }}>
@@ -21,6 +40,19 @@ export default function SongCard({ song, index = 0, onEdit, onDelete, onToggleFa
         >
           <HeartIcon size={18} filled={song.favorite} />
         </button>
+
+        {hasAudio ? (
+          <button
+            type="button"
+            className={`song-card__play ${isPlaying ? 'is-playing' : ''}`}
+            onClick={() => onPlay(song)}
+            aria-label={isPlaying ? `Pause ${song.title}` : `Play ${song.title}`}
+            aria-pressed={isPlaying}
+            title={isPlaying ? 'Pause' : 'Play'}
+          >
+            {isPlaying ? <PauseIcon size={18} /> : <PlayIcon size={18} />}
+          </button>
+        ) : null}
 
         <span className="song-card__shine" aria-hidden="true" />
       </div>

@@ -49,6 +49,20 @@ const songSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Optional attached audio file, served from /uploads/<name>.
+    audioUrl: {
+      type: String,
+      default: '',
+    },
+    audioName: {
+      type: String,
+      default: '',
+      maxlength: 260,
+    },
+    audioSize: {
+      type: Number,
+      default: 0,
+    },
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

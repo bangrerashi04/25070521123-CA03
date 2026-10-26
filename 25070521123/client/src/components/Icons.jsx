@@ -253,3 +253,67 @@ export function CommandIcon(props) {
     </Svg>
   );
 }
+
+/* ---------------- audio player ---------------- */
+
+export function PlayIcon({ filled = true, ...props }) {
+  return (
+    <Svg fill={filled ? 'currentColor' : 'none'} stroke={filled ? 'none' : 'currentColor'} {...props}>
+      <path d="M8 5.5v13l11-6.5-11-6.5Z" />
+    </Svg>
+  );
+}
+
+export function PauseIcon(props) {
+  return (
+    <Svg fill="currentColor" stroke="none" {...props}>
+      <rect x="7" y="5" width="3.6" height="14" rx="1.2" />
+      <rect x="13.4" y="5" width="3.6" height="14" rx="1.2" />
+    </Svg>
+  );
+}
+
+export function SkipBackIcon(props) {
+  return (
+    <Svg fill="currentColor" stroke="none" {...props}>
+      <path d="M18 5.5v13L9 12l9-6.5Z" />
+      <rect x="5" y="5.5" width="2.4" height="13" rx="1.1" />
+    </Svg>
+  );
+}
+
+export function SkipForwardIcon(props) {
+  return (
+    <Svg fill="currentColor" stroke="none" {...props}>
+      <path d="M6 5.5v13L15 12 6 5.5Z" />
+      <rect x="16.6" y="5.5" width="2.4" height="13" rx="1.1" />
+    </Svg>
+  );
+}
+
+export function VolumeIcon(props) {
+  return (
+    <Svg {...props}>
+      <path d="M11 5 6.5 9H3v6h3.5L11 19V5Z" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" />
+    </Svg>
+  );
+}
+
+export function VolumeMuteIcon(props) {
+  return (
+    <Svg {...props}>
+      <path d="M11 5 6.5 9H3v6h3.5L11 19V5Z" />
+      <path d="m16 9.5 5 5M21 9.5l-5 5" />
+    </Svg>
+  );
+}
+
+export function UploadIcon(props) {
+  return (
+    <Svg {...props}>
+      <path d="M12 16V4m0 0 4.5 4.5M12 4 7.5 8.5" />
+      <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+    </Svg>
+  );
+}

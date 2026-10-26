@@ -1,22 +1,63 @@
-import { ClockIcon, DiscIcon, HeartIcon, PencilIcon, StarIcon, TrashIcon } from './Icons';
+import {
+  ClockIcon,
+  DiscIcon,
+  HeartIcon,
+  PauseIcon,
+  PencilIcon,
+  PlayIcon,
+  StarIcon,
+  TrashIcon,
+} from './Icons';
 import { coverGradient, formatDuration, initials, ratingStars } from '../utils/format';
 
 /**
  * Compact row used by the list view of the library.
  */
-export default function SongRow({ song, index = 0, onEdit, onDelete, onToggleFavorite }) {
+export default function SongRow({
+  song,
+  index = 0,
+  onEdit,
+  onDelete,
+  onToggleFavorite,
+  onPlay,
+  isPlaying = false,
+}) {
+  const hasAudio = Boolean(song.audioUrl);
+
+  const cover = (
+    <>
+      <span className="song-row__cover-initials">{initials(song.title)}</span>
+      {hasAudio && (
+        <span className="song-row__cover-icon" aria-hidden="true">
+          {isPlaying ? <PauseIcon size={15} /> : <PlayIcon size={15} />}
+        </span>
+      )}
+    </>
+  );
+
+  const coverStyle = { background: coverGradient(`${song.title}${song.artist}`) };
+
   return (
     <article
-      className="song-row"
+      className={`song-row ${isPlaying ? 'is-playing' : ''}`}
       style={{ '--delay': `${Math.min(index, 14) * 30}ms` }}
     >
-      <div
-        className="song-row__cover"
-        style={{ background: coverGradient(`${song.title}${song.artist}`) }}
-        aria-hidden="true"
-      >
-        <span>{initials(song.title)}</span>
-      </div>
+      {hasAudio ? (
+        <button
+          type="button"
+          className="song-row__cover song-row__cover--btn"
+          style={coverStyle}
+          onClick={() => onPlay(song)}
+          aria-label={isPlaying ? `Pause ${song.title}` : `Play ${song.title}`}
+          aria-pressed={isPlaying}
+        >
+          {cover}
+        </button>
+      ) : (
+        <div className="song-row__cover" style={coverStyle} aria-hidden="true">
+          {cover}
+        </div>
+      )}
 
       <div className="song-row__main">
         <h3 title={song.title}>{song.title}</h3>
